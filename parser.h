@@ -1,8 +1,12 @@
 #pragma once
 
 #include <unordered_map>
+#include <deque>
 
-enum class statements_type : uint8_t {
+#include "token.hpp"
+
+enum class statements_type : uint8_t
+{
     function,
     variable,
     start,
@@ -11,7 +15,6 @@ enum class statements_type : uint8_t {
     output,
     unknown
 };
-
 
 class parser
 {
@@ -35,6 +38,10 @@ private:
     void parse_functions(const std::string& expr, size_t delim_pos) const;
 
     statements_type string_to_statement(const std::string& input) const;
+
+private:
+    std::deque<token> tokenize(const std::string& expr, bool func = false) const;
+    std::deque<token> compile(std::deque<token> tokens);
 
 private:
     std::string m_input;

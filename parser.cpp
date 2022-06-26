@@ -155,3 +155,165 @@ void parser::parse_global_expression(const std::string& expr) const
         }
     }
  }
+
+std::deque<token> parser::tokenize(const std::string& expr, bool func) const
+{
+	int i = 0;
+	std::deque<token> result = std::deque<token>();
+
+	while (i != expr.length())
+	{
+		char c = expr[i++]; // Get the character and move to the next character. After
+		// this i will be pointing to the next character not that current one.
+		token t;
+
+		switch (c) {
+		case '(':
+			t.type_ = token_type::token_open;
+			t.contents_ = "(";
+			break;
+		case ')':
+			t.type_ = token_type::token_close;
+			t.contents_ = ")";
+			break;
+		case '^':
+			t.type_ = token_type::token_pow;
+			t.contents_ = "^";
+			t.isop_ = true;
+			t.oppres_ = 3;
+			t.isopleft_ = false;
+			break;
+		case '*':
+			t.type_ = token_type::token_mult;
+			t.contents_ = "*";
+			t.isop_ = true;
+			t.oppres_ = 2;
+			break;
+		case '/':
+			t.type_ = token_type::token_div;
+			t.contents_ = "/";
+			t.isop_ = true;
+			t.oppres_ = 2;
+			break;
+		case '+':
+			t.type_ = token_type::token_add;
+			t.contents_ = "+";
+			t.isop_ = true;
+			t.oppres_ = 1;
+			break;
+		case ',':
+			t.type_ = token_type::token_comma;
+			t.contents_ = ",";
+			break;
+		default:
+			if (isdigit(c) || c == '.' || (c == '-' && (isdigit(expr[i]) || expr[i] == '.'))) {
+				std::string buffer;
+				--i;
+				while (isdigit(c) || c == '.' || c == '-') {
+					buffer += c;
+					c = expr[++i];
+				}
+
+				t.type_ = token_type::token_num;
+				t.contents_ = buffer;
+				t.value_ = std::atof(buffer.c_str());
+			} else if (c == '-') {
+				t.type_ = token_type::token_sub;
+				t.contents_ = "-";
+				t.isop_ = true;
+				t.oppres_ = 1;
+			} else if (isspace(c)) {
+				continue;
+            } else if (isalpha(c)) {
+				t.type_ = token_type::token_var;
+				t.contents_ = c;
+
+				if (isalpha(expr[i])) {
+					t.contents_ = "";
+					t.isop_ = false;
+					i--;
+					while (isalpha(c)) {
+						t.contents_ += c;
+						c = expr[++i];
+					}
+				}
+                if (func) {
+                    t.type_ = token_type::token_function;
+                    t.oppres_ = 4; // Functions always come before anything else.
+                }
+			}
+			else // Unkown token. Error!
+				throw std::logic_error("Unkown token!");
+			break;
+		}
+
+		result.push_back(t);
+	}
+
+	return std::move(result);
+}
+
+std::deque<token> parser::compile(std::deque<token> tokens)
+{
+	std::deque<token> list = std::deque<token>();
+	std::stack<token> opstack = std::stack<token>();
+
+	token t;
+	while (tokens.size() != 0) {
+		t = tokens.front();
+		tokens.pop_front();
+
+		if (t.type_ == token_type::token_num || t.type_ == token_type::token_var) {
+			list.push_back(t);
+        } else if (t.type_ == token_type::token_function) {
+			opstack.push(t);
+        } else if (t.type_ == token_type::token_comma) {
+			while (!opstack.empty() && opstack.top().type_ != token_type::token_open) {
+				token t = opstack.top();
+				opstack.pop();
+				list.push_back(t);
+			}
+			if (opstack.empty()) {
+                throw std::logic_error("Bad function call syntax.");
+            }
+		} else if (t.isop_) {
+			while (!opstack.empty() && opstack.top().isop_) {
+				if ((t.isopleft_ && (t.oppres_ <= opstack.top().oppres_)) || (!t.isopleft_ && (t.oppres_ < opstack.top().oppres_))) {
+					token t = opstack.top();
+					opstack.pop();
+					list.push_back(t);
+				}
+				else
+					break;
+			}
+			opstack.push(t);
+		} else if (t.type_ == token_type::token_open) {
+			opstack.push(t);
+        } else if (t.type_ == token_type::token_close) {
+			while (!opstack.empty() && opstack.top().type_ != token_type::token_open) {
+				token t = opstack.top();
+				opstack.pop();
+				list.push_back(t);
+			}
+			if (opstack.empty()) throw std::logic_error("Bracket mismatch!");
+			opstack.pop();
+			if (!opstack.empty() && opstack.top().type_ == token_type::token_function) {
+				token t = opstack.top();
+				opstack.pop();
+				list.push_back(t);
+			}
+		}
+	}
+
+	// Move anything left on the stack to the output list.
+	while (!opstack.empty()) {
+		token t = opstack.top();
+		if (t.type_ == token_type::token_open || t.type_ == token_type::token_close) {
+            throw std::logic_error("Bracket mismatch!");
+        }
+		opstack.pop();
+		list.push_back(t);
+	}
+
+	return list;
+}
